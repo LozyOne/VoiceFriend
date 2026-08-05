@@ -9,7 +9,6 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Храдим список подключенных пользователей
 const users = new Map();
 
 wss.on('connection', (ws) => {
@@ -20,16 +19,12 @@ wss.on('connection', (ws) => {
             const data = JSON.parse(message);
 
             switch (data.type) {
-                // Когда пользователь вводит имя и нажимает «Войти»
                 case 'join':
                     userName = data.name;
                     users.set(ws, userName);
-                    
-                    // Рассылаем всем обновленный список участников
                     broadcastUserList();
                     break;
 
-                // Пересылка WebRTC-сигналов (для голосовой связи)
                 case 'offer':
                 case 'answer':
                 case 'candidate':
@@ -37,7 +32,7 @@ wss.on('connection', (ws) => {
                     break;
 
                 default:
-                    console. неизвестный тип сообщения:', data.type);
+                    console.log('Неизвестный тип сообщения:', data.type);
             }
         } catch (e) {
             console.error('Ошибка при обработке сообщения:', e);
