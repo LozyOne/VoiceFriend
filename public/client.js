@@ -2,10 +2,14 @@ const socket = io();
 
 let localStream = null;
 let screenStream = null;
-let peerConnections = {}; // id -> RTCPeerConnection
+let peerConnections = {}; // id собеседника -> RTCPeerConnection
 
-const configuration = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+// Публичные STUN-серверы для обхода NAT/сетей
+const rtcConfig = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+    ]
 };
 
 // Элементы интерфейса
@@ -26,7 +30,6 @@ const voiceLeaveBtn = document.getElementById('voice-leave-btn');
 const muteBtn = document.getElementById('mute-btn');
 const screenShareBtn = document.getElementById('screen-share-btn');
 const screensGrid = document.getElementById('screens-grid');
-const audioContainer = document.getElementById('audio-container');
 
 let myUserName = localStorage.getItem('voicechat_username') || '';
 let isVoiceConnected = false;
@@ -78,7 +81,7 @@ socket.on('chat-message', (data) => {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 });
 
-// Отображение списков пользователей (Онлайн и Голос)
+// Обновление списков пользователей
 socket.on('users', (users) => {
     if (onlineUserList) {
         onlineUserList.innerHTML = '';
@@ -102,7 +105,8 @@ socket.on('users', (users) => {
     }
 });
 
-// Управление голосовым каналом
+// --- ВЕБ-RTC И ГОЛОСОВАЯ СВЯЗЬ ---
+
 if (voiceJoinBtn) {
     voiceJoinBtn.addEventListener('click', async () => {
         try {
@@ -116,7 +120,7 @@ if (voiceJoinBtn) {
 
             socket.emit('join-voice');
         } catch (err) {
-            alert('Ошибка доступа к микрофону: ' + err.message);
+            alert('Не удалось получить доступ к микрофону: ' + err.message);
         }
     });
 }
@@ -133,8 +137,8 @@ function leaveVoiceChannel() {
         localStream = null;
     }
     stopScreenSharing();
-    
-    // Закрываем все соединения
+
+    // Закрываем все WebRTC соединения
     Object.keys(peerConnections).forEach(id => {
         peerConnections[id].close();
         delete peerConnections[id];
@@ -144,9 +148,99 @@ function leaveVoiceChannel() {
     if (voiceJoinBtn) voiceJoinBtn.classList.remove('hidden');
     if (voiceLeaveBtn) voiceLeaveBtn.classList.add('hidden');
     if (muteBtn) muteBtn.classList.add('hidden');
-    if (screenShareBtn) muteBtn.classList.add('hidden');
+    if (screenShareBtn) screenShareBtn.classList.add('hidden');
 
     socket.emit('leave-voice');
+}
+
+// Когда кто-то новый зашел в голос — инициируем соединение
+socket.on('user-joined-voice', async (id) => {
+    if (!isVoiceConnected) return;
+    const pc = createPeerConnection(id);
+    try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('signal', { to: id, signal: { type: 'offer', sdp: pc.localDescription } });
+    } catch (err) {
+        console.error('Ошибка создания offer:', err);
+    }
+});
+
+socket.on('user-left-voice', (id) => {
+    if (peerConnections[id]) {
+        peerConnections[id].close();
+        delete peerConnections[id];
+    }
+    removeMediaElement(id);
+});
+
+// Обработка WebRTC сигналов
+socket.on('signal', async ({ from, signal }) => {
+    let pc = peerConnections[from];
+    if (!pc) {
+        pc = createPeerConnection(from);
+    }
+
+    try {
+        if (signal.type === 'offer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+            // Добавляем свои треки (звук/экран) перед ответом
+            if (localStream) {
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            }
+            if (screenStream) {
+                screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
+            }
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('signal', { to: from, signal: { type: 'answer', sdp: pc.localDescription } });
+        } else if (signal.type === 'answer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        } else if (signal.candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        }
+    } catch (err) {
+        console.error('Ошибка обработки сигнала:', err);
+    }
+});
+
+function createPeerConnection(id) {
+    const pc = new RTCPeerConnection(rtcConfig);
+    peerConnections[id] = pc;
+
+    // Передаем свои аудио и видео треки собеседнику
+    if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+    if (screenStream) {
+        screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
+    }
+
+    // Получаем аудио/видео от собеседника
+    pc.ontrack = (event) => {
+        let stream = event.streams[0];
+        // Определяем, видео это (экран) или аудио
+        if (event.track.kind === 'video') {
+            appendVideoElement(id, stream);
+        } else if (event.track.kind === 'audio') {
+            let audioEl = document.getElementById('audio-' + id);
+            if (!audioEl) {
+                audioEl = document.createElement('audio');
+                audioEl.id = 'audio-' + id;
+                audioEl.autoplay = true;
+                document.body.appendChild(audioEl);
+            }
+            audioEl.srcObject = stream;
+        }
+    };
+
+    pc.onicecandidate = (event) => {
+        if (event.candidate) {
+            socket.emit('signal', { to: id, signal: { candidate: event.candidate } });
+        }
+    };
+
+    return pc;
 }
 
 // Заглушить микрофон
@@ -173,11 +267,14 @@ if (screenShareBtn) {
                 screenShareBtn.textContent = 'Остановить показ';
                 screenShareBtn.style.background = '#ed4245';
 
-                // Добавляем видео на экран себе
-                appendVideoElement('my-screen', screenStream, `${myUserName} (Ваш экран)`, true);
+                // Добавляем экран в ПК соединения для всех активных пиров
+                Object.values(peerConnections).forEach(pc => {
+                    screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
+                });
 
-                // Транслируем видео всем участникам через WebRTC
-                // (упрощенный broadcast треков)
+                // Показываем свой экран себе локально
+                appendVideoElement('my-screen', screenStream, `${myUserName} (Ваш экран)`);
+
                 screenStream.getVideoTracks()[0].onended = () => {
                     stopScreenSharing();
                 };
@@ -185,7 +282,7 @@ if (screenShareBtn) {
                 stopScreenSharing();
             }
         } catch (err) {
-            console.log('Демонстрация отменена');
+            console.log('Показ экрана отменен');
         }
     });
 }
@@ -204,19 +301,18 @@ function stopScreenSharing() {
     if (myCard) myCard.remove();
 }
 
-function appendVideoElement(id, stream, label, muted = false) {
+function appendVideoElement(id, stream, label = 'Экран участника') {
     if (!screensGrid) return;
-    let card = document.getElementById(id);
+    let card = document.getElementById('card-' + id);
     if (!card) {
         card = document.createElement('div');
-        card.id = id;
+        card.id = 'card-' + id;
         card.style.cssText = 'position: relative; background: #000; border-radius: 8px; overflow: hidden; width: 320px; height: 200px; display: inline-block; margin: 6px;';
         
         const video = document.createElement('video');
         video.srcObject = stream;
         video.autoplay = true;
         video.playsInline = true;
-        video.muted = muted;
         video.style.cssText = 'width: 100%; height: 100%; object-fit: contain;';
 
         const tag = document.createElement('div');
@@ -227,4 +323,11 @@ function appendVideoElement(id, stream, label, muted = false) {
         card.appendChild(tag);
         screensGrid.appendChild(card);
     }
+}
+
+function removeMediaElement(id) {
+    const card = document.getElementById('card-' + id);
+    if (card) card.remove();
+    const audioEl = document.getElementById('audio-' + id);
+    if (audioEl) audioEl.remove();
 }
