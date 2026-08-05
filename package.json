@@ -1,0 +1,19 @@
+{
+  "name": "voice-chat-app",
+  "version": "1.0.0",
+  "description": "Простой чат в браузере: текст с историей, голосовой чат и демонстрация экрана (WebRTC)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.19.2",
+    "nanoid": "^3.3.7",
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.8.3"
+  }
+}
