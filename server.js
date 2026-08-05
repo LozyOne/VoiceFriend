@@ -9,13 +9,14 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const users = new Map();
+const users = new Map(); // Хранит ws -> имя
 
 wss.on('connection', (ws) => {
     let userName = '';
 
     ws.on('message', (message) => {
         try {
+            // Парсим входящее сообщение от клиента
             const data = JSON.parse(message);
 
             switch (data.type) {
@@ -26,6 +27,7 @@ wss.on('connection', (ws) => {
                     break;
 
                 case 'chat-message':
+                    // Рассылаем текстовое сообщение всем участникам
                     wss.clients.forEach((client) => {
                         if (client.readyState === WebSocket.OPEN) {
                             client.send(JSON.stringify({
@@ -40,14 +42,19 @@ wss.on('connection', (ws) => {
                 case 'offer':
                 case 'answer':
                 case 'candidate':
-                    forwardSignal(ws, data);
+                    // Перенаправление WebRTC-сигналов для голоса/видео
+                    wss.clients.forEach((client) => {
+                        if (client !== ws && client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify(data));
+                        }
+                    });
                     break;
 
                 default:
                     break;
             }
         } catch (e) {
-            console.error('Ошибка обработки сообщения:', e);
+            console.error('Ошибка при обработке сообщения:', e);
         }
     });
 
@@ -69,14 +76,6 @@ function broadcastUserList() {
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(payload);
-        }
-    });
-}
-
-function forwardSignal(senderWs, data) {
-    wss.clients.forEach((client) => {
-        if (client !== senderWs && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(data));
         }
     });
 }
