@@ -3,17 +3,12 @@ const socket = io();
 let localStream;
 let peerConnections = {};
 
-const configuration = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-};
-
 // Элементы интерфейса
 const loginScreen = document.getElementById('login-screen');
 const appScreen = document.getElementById('app-screen');
 const usernameInput = document.getElementById('username-input');
 const loginBtn = document.getElementById('login-btn') || document.querySelector('#login-screen button');
 const onlineUserList = document.getElementById('online-user-list');
-const voiceUserList = document.getElementById('voice-user-list');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
 const messagesContainer = document.getElementById('messages');
@@ -21,12 +16,10 @@ const messagesContainer = document.getElementById('messages');
 const voiceJoinBtn = document.getElementById('voice-join-btn');
 const voiceLeaveBtn = document.getElementById('voice-leave-btn');
 const muteBtn = document.getElementById('mute-btn');
-const screenShareBtn = document.getElementById('screen-share-btn');
-const audioContainer = document.getElementById('audio-container');
 
 let myUserName = localStorage.getItem('voicechat_username') || '';
 
-// Автоматический вход, если имя уже сохранено
+// Автоматический вход по сохраненному имени (чтобы не вводить заново)
 if (myUserName) {
     if (loginScreen) loginScreen.classList.add('hidden');
     if (appScreen) appScreen.classList.remove('hidden');
@@ -44,6 +37,7 @@ if (loginBtn) {
         }
 
         myUserName = username;
+        // Сохраняем имя в памяти браузера
         localStorage.setItem('voicechat_username', myUserName);
 
         if (loginScreen) loginScreen.classList.add('hidden');
@@ -53,7 +47,7 @@ if (loginBtn) {
     });
 }
 
-// Отправка текстовых сообщений без перезагрузки страницы
+// Отправка сообщений в чат без перезагрузки страницы
 if (chatForm) {
     chatForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -65,7 +59,7 @@ if (chatForm) {
     });
 }
 
-// Получение текстовых сообщений
+// Получение сообщений чата
 socket.on('chat-message', (data) => {
     if (!messagesContainer) return;
     const msgEl = document.createElement('div');
@@ -76,11 +70,10 @@ socket.on('chat-message', (data) => {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 });
 
-// Обновление списков пользователей
+// Обновление списка онлайн-пользователей
 socket.on('users', (data) => {
     const users = Array.isArray(data) ? data : (data.users || []);
     
-    // Онлайн список
     if (onlineUserList) {
         onlineUserList.innerHTML = '';
         users.forEach(user => {
@@ -92,7 +85,7 @@ socket.on('users', (data) => {
     }
 });
 
-// Логика голосового канала
+// Голосовой канал (подключение микрофона)
 if (voiceJoinBtn) {
     voiceJoinBtn.addEventListener('click', async () => {
         try {
@@ -101,12 +94,11 @@ if (voiceJoinBtn) {
             if (voiceJoinBtn) voiceJoinBtn.classList.add('hidden');
             if (voiceLeaveBtn) voiceLeaveBtn.classList.remove('hidden');
             if (muteBtn) muteBtn.classList.remove('hidden');
-            if (screenShareBtn) muteBtn.classList.remove('hidden'); // если нужно
 
-            alert('Вы успешно подключились к голосовому каналу!');
+            alert('Успешно подключено к голосовому каналу!');
         } catch (err) {
             console.error('Ошибка микрофона:', err);
-            alert('Не удалось получить доступ к микрофону: ' + err.message);
+            alert('Не удалось получить доступ к микрофону. Проверьте разрешения в браузере.');
         }
     });
 }
