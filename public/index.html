@@ -1,1 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceChat — свой чат с голосом и демонстрацией экрана</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
 
+  <!-- Экран входа -->
+  <div id="login-screen" class="screen">
+    <div class="login-box">
+      <h1>VoiceChat</h1>
+      <p>Введите имя, чтобы войти в общий чат</p>
+      <input id="username-input" type="text" placeholder="Ваше имя" maxlength="32" autocomplete="off" />
+      <button id="join-btn">Войти</button>
+    </div>
+  </div>
+
+  <!-- Основной экран -->
+  <div id="app-screen" class="screen hidden">
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <h2>Голосовой канал</h2>
+        <div id="voice-controls">
+          <button id="voice-join-btn" class="btn btn-primary">🎤 Войти в голосовой чат</button>
+          <button id="voice-leave-btn" class="btn btn-danger hidden">📞 Выйти</button>
+          <button id="mute-btn" class="btn hidden">🔇 Заглушить</button>
+          <button id="screen-share-btn" class="btn hidden">🖥️ Демонстрация экрана</button>
+        </div>
+        <ul id="voice-user-list" class="user-list"></ul>
+      </div>
+
+      <div class="sidebar-section">
+        <h2>Онлайн (<span id="online-count">0</span>)</h2>
+        <ul id="online-user-list" class="user-list"></ul>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <div id="screens-grid" class="screens-grid"></div>
+
+      <div class="chat-area">
+        <div id="messages" class="messages"></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" type="text" placeholder="Написать сообщение..." maxlength="2000" autocomplete="off" />
+          <button type="submit" class="btn btn-primary">Отправить</button>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <!-- скрытый шаблон для аудио тегов участников голосового чата -->
+  <div id="audio-container" class="hidden"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/client.js"></script>
+</body>
+</html>
