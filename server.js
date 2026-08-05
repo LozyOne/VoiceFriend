@@ -7,10 +7,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Выводим в лог Render точный путь для проверки
-console.log('Путь к папке public:', path.join(process.cwd(), 'public'));
-
-app.use(express.static(path.join(process.cwd(), 'public')));
+// Подключаем папку public для всех статических файлов
+app.use(express.static(path.join(__dirname, 'public')));
 
 const users = new Map();
 const messageHistory = [];
@@ -69,9 +67,9 @@ function broadcastUsers() {
     io.emit('users', userList);
 }
 
-// Надежный обработчик для фронтенда
-app.get('*', (req, res) => {
-    res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
+// Главная страница
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
