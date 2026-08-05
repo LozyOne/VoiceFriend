@@ -9,31 +9,28 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Список активных пользователей: id -> { name, inVoice }
+// Хранение пользователей: id -> { name, inVoice }
 const users = new Map();
 
 io.on('connection', (socket) => {
     console.log('Пользователь подключился:', socket.id);
 
-    // Вход пользователя под именем
     socket.on('join', (data) => {
         const name = typeof data === 'string' ? data : (data.name || 'Аноним');
         users.set(socket.id, { name, inVoice: false });
         broadcastUsers();
     });
 
-    // Вход в голосовой канал
     socket.on('join-voice', () => {
         const user = users.get(socket.id);
         if (user) {
             user.inVoice = true;
             broadcastUsers();
-            // Оповещаем остальных в комнате о новом участнике голоса
+            // Сообщаем всем остальным, что зашел новый участник в голос
             socket.broadcast.emit('user-joined-voice', socket.id);
         }
     });
 
-    // Выход из голосового канала
     socket.on('leave-voice', () => {
         const user = users.get(socket.id);
         if (user) {
@@ -43,7 +40,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Текстовый чат
     socket.on('chat-message', (data) => {
         io.emit('chat-message', {
             name: data.name,
@@ -51,7 +47,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    // WebRTC Сигнализация (для передачи голоса и экрана между клиентами)
+    // WebRTC Сигнализация (нужна для передачи звука и экрана между клиентами)
     socket.on('signal', (data) => {
         io.to(data.to).emit('signal', {
             from: socket.id,
