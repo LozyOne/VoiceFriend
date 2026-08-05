@@ -194,6 +194,35 @@ body {
 }
 .chat-form button { flex-shrink: 0; }
 
+/* Стили для списков пользователей */
+#user-list, #voice-user-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.user-item {
+    transition: background 0.2s;
+}
+
+.user-item:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Красивый скроллбар */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
 /* Скроллбар */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--bg-darkest); border-radius: 4px; }
