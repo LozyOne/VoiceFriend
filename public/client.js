@@ -1,62 +1,50 @@
 const socket = io();
 
-let localStream;
-const peerConnections = {};
-
-const configuration = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-};
-
-// Получаем элементы интерфейса
-const usernameInput = document.getElementById('username-input');
-const joinBtn = document.getElementById('join-btn');
+// Элементы интерфейса
 const loginScreen = document.getElementById('login-screen');
-const chatScreen = document.getElementById('chat-screen');
-const userListEl = document.getElementById('user-list') || document.querySelector('.online-list');
+const appScreen = document.getElementById('app-screen');
+const usernameInput = document.getElementById('username-input');
+const loginBtn = document.getElementById('login-btn') || document.querySelector('#login-screen button');
+const onlineUserList = document.getElementById('online-user-list');
+const onlineTitle = document.querySelector('h2'); // Заголовок «Онлайн»
 
-// Если пользователь нажимает войти
-if (joinBtn) {
-    joinBtn.addEventListener('click', () => {
+// Обработка входа
+if (loginBtn) {
+    loginBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         const username = usernameInput ? usernameInput.value.trim() : '';
         if (!username) {
             alert('Пожалуйста, введите имя!');
             return;
         }
 
-        // Скрываем окно входа, если оно есть в разметке
-        if (loginScreen) loginScreen.style.display = 'none';
-        if (chatScreen) chatScreen.style.display = 'block';
+        // Переключаем экраны
+        if (loginScreen) loginScreen.classList.add('hidden');
+        if (appScreen) appScreen.classList.remove('hidden');
 
         // Отправляем имя на сервер
         socket.emit('join', { name: username });
     });
 }
 
-// Получение списка пользователей от сервера в реальном времени
+// Получение списка пользователей от сервера
 socket.on('users', (data) => {
     const users = Array.isArray(data) ? data : (data.users || []);
     
-    // Находим блок для отображения онлайн-пользователей
-    let container = document.getElementById('user-list');
-    if (!container) {
-        // Если такого ID нет, пробуем найти блок "ОНЛАЙН" по тексту в боковой панели
-        const headings = document.querySelectorAll('div, span');
-        headings.forEach(el => {
-            if (el.textContent && el.textContent.includes('ОНЛАЙН')) {
-                container = el.nextElementSibling || el.parentElement;
-            }
-        });
+    // Обновляем счетчик в заголовке Онлайн (например, Онлайн (2))
+    const onlineHeading = document.querySelectorAll('.sidebar-section h2')[1] || onlineTitle;
+    if (onlineHeading) {
+        onlineHeading.textContent = `Онлайн (${users.length})`;
     }
 
-    if (container) {
-        // Очищаем и выводим актуальный список
-        container.innerHTML = '';
+    // Обновляем список никнеймов в сайдбаре
+    if (onlineUserList) {
+        onlineUserList.innerHTML = '';
         users.forEach(user => {
-            const userItem = document.createElement('div');
-            userItem.className = 'user-item';
-            userItem.style.cssText = 'padding: 6px 10px; margin: 4px 0; background: rgba(255,255,255,0.05); border-radius: 6px; display: flex; align-items: center; gap: 8px; color: #fff; font-size: 14px;';
-            userItem.innerHTML = `<span style="width: 8px; height: 8px; background: #23a55a; border-radius: 50%;"></span> ${user}`;
-            container.appendChild(userItem);
+            const li = document.createElement('li');
+            li.style.cssText = 'padding: 6px 10px; margin: 4px 0; background: rgba(255,255,255,0.05); border-radius: 6px; display: flex; align-items: center; gap: 8px; color: #fff; font-size: 14px; list-style: none;';
+            li.innerHTML = `<span style="width: 8px; height: 8px; background: #23a55a; border-radius: 50%;"></span> ${user}`;
+            onlineUserList.appendChild(li);
         });
     }
 });
