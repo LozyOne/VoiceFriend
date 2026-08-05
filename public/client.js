@@ -1,8 +1,7 @@
-const socket = io();
+const socket = io(); // Используем Socket.IO клиент
 
 let localStream;
 let screenStream;
-let peerConnections = {};
 
 // Элементы интерфейса
 const loginScreen = document.getElementById('login-screen');
@@ -26,14 +25,18 @@ let isVoiceConnected = false;
 let isMuted = false;
 let isSharingScreen = false;
 
-// Автоматический вход по сохраненному имени
+// Автоматический вход, если имя уже сохранено в браузере
 if (myUserName) {
     if (loginScreen) loginScreen.classList.add('hidden');
     if (appScreen) appScreen.classList.remove('hidden');
-    socket.emit('join', { name: myUserName });
+    
+    // Подключаемся к сокету после его инициализации
+    socket.on('connect', () => {
+        socket.emit('join', { type: 'join', name: myUserName });
+    });
 }
 
-// Кнопка входа
+// Кнопка входа по клику
 if (loginBtn) {
     loginBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -49,37 +52,38 @@ if (loginBtn) {
         if (loginScreen) loginScreen.classList.add('hidden');
         if (appScreen) appScreen.classList.remove('hidden');
 
-        socket.emit('join', { name: myUserName });
+        socket.emit('join', { type: 'join', name: myUserName });
     });
 }
 
-// Отправка сообщений в чат
+// Отправка сообщений в чат (исправлено на socket.emit)
 if (chatForm) {
     chatForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const text = chatInput ? chatInput.value.trim() : '';
         if (!text) return;
 
-        socket.emit('chat-message', { name: myUserName, text: text });
+        socket.emit('chat-message', { type: 'chat-message', name: myUserName, text: text });
         if (chatInput) chatInput.value = '';
     });
 }
 
+// Получение сообщений чата
 socket.on('chat-message', (data) => {
     if (!messagesContainer) return;
     const msgEl = document.createElement('div');
     msgEl.className = 'message-item';
-    msgEl.style.cssText = 'margin: 4px 0; color: #dbdee1; font-size: 14px;';
-    msgEl.innerHTML = `<strong style="color: #fff;">${data.name}:</strong> ${data.text}`;
+    msgEl.style.cssText = 'margin: 6px 0; color: #dbdee1; font-size: 14px; word-break: break-word;';
+    msgEl.innerHTML = `<strong style="color: #fff; margin-right: 6px;">${data.name}:</strong> ${data.text}`;
     messagesContainer.appendChild(msgEl);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 });
 
-// Обновление списков пользователей (Онлайн + Голосовой канал)
+// Получение списка пользователей от сервера
 socket.on('users', (data) => {
     const users = Array.isArray(data) ? data : (data.users || []);
     
-    // 1. Общий список онлайн
+    // 1. Заполняем список «Онлайн»
     if (onlineUserList) {
         onlineUserList.innerHTML = '';
         users.forEach(user => {
@@ -90,7 +94,7 @@ socket.on('users', (data) => {
         });
     }
 
-    // 2. Список голосового канала (показывает тех, кто в голосе, включая вас)
+    // 2. Заполняем список «Голосовой канал» (если вы нажали войти в голос)
     if (voiceUserList) {
         voiceUserList.innerHTML = '';
         if (isVoiceConnected && myUserName) {
@@ -114,8 +118,9 @@ if (voiceJoinBtn) {
             if (muteBtn) muteBtn.classList.remove('hidden');
             if (screenShareBtn) screenShareBtn.classList.remove('hidden');
 
-            // Принудительно обновляем отображение себя в голосовом канале
-            socket.emit('join', { name: myUserName });
+            // Обновляем статус на сервере
+            socket.emit('join', { type: 'join', name: myUserName });
+            alert('Успешно подключено к голосовому каналу!');
         } catch (err) {
             console.error('Ошибка микрофона:', err);
             alert('Не удалось получить доступ к микрофону: ' + err.message);
@@ -141,11 +146,11 @@ if (voiceLeaveBtn) {
         if (screenShareBtn) screenShareBtn.classList.add('hidden');
 
         if (voiceUserList) voiceUserList.innerHTML = '';
-        socket.emit('join', { name: myUserName });
+        socket.emit('join', { type: 'join', name: myUserName });
     });
 }
 
-// Кнопка Мут / Выключить микрофон
+// Кнопка Мут
 if (muteBtn) {
     muteBtn.addEventListener('click', () => {
         if (!localStream) return;
@@ -169,7 +174,6 @@ if (screenShareBtn) {
                 screenShareBtn.textContent = 'Остановить показ';
                 screenShareBtn.style.background = '#ed4245';
 
-                // Показываем ваш экран локально в сетке
                 if (screensGrid) {
                     let myVideoCard = document.getElementById('my-screen-card');
                     if (!myVideoCard) {
@@ -193,7 +197,6 @@ if (screenShareBtn) {
                     }
                 }
 
-                // Если демонстрация экрана завершена через стандартную кнопку браузера «Остановить общий доступ»
                 screenStream.getVideoTracks()[0].onended = () => {
                     stopScreenSharing();
                 };
