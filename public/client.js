@@ -2,9 +2,8 @@ const socket = io();
 
 let localStream = null;
 let screenStream = null;
-let peerConnections = {}; // id собеседника -> RTCPeerConnection
+let peerConnections = {};
 
-// Публичные STUN-серверы для обхода NAT/сетей
 const rtcConfig = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -12,7 +11,6 @@ const rtcConfig = {
     ]
 };
 
-// Элементы интерфейса
 const loginScreen = document.getElementById('login-screen');
 const appScreen = document.getElementById('app-screen');
 const usernameInput = document.getElementById('username-input');
@@ -36,7 +34,6 @@ let isVoiceConnected = false;
 let isMuted = false;
 let isSharingScreen = false;
 
-// Автоматический вход по сохраненному имени
 if (myUserName) {
     if (loginScreen) loginScreen.classList.add('hidden');
     if (appScreen) appScreen.classList.remove('hidden');
@@ -60,7 +57,12 @@ if (loginBtn) {
     });
 }
 
-// Отправка сообщений в чат
+socket.on('init-history', (history) => {
+    if (!messagesContainer) return;
+    messagesContainer.innerHTML = '';
+    history.forEach(data => appendMessage(data));
+});
+
 if (chatForm) {
     chatForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -73,15 +75,18 @@ if (chatForm) {
 }
 
 socket.on('chat-message', (data) => {
+    appendMessage(data);
+});
+
+function appendMessage(data) {
     if (!messagesContainer) return;
     const msgEl = document.createElement('div');
     msgEl.style.cssText = 'margin: 6px 0; color: #dbdee1; font-size: 14px; word-break: break-word;';
     msgEl.innerHTML = `<strong style="color: #fff; margin-right: 6px;">${data.name}:</strong> ${data.text}`;
     messagesContainer.appendChild(msgEl);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
-});
+}
 
-// Обновление списков пользователей
 socket.on('users', (users) => {
     if (onlineUserList) {
         onlineUserList.innerHTML = '';
@@ -104,8 +109,6 @@ socket.on('users', (users) => {
         });
     }
 });
-
-// --- ВЕБ-RTC И ГОЛОСОВАЯ СВЯЗЬ ---
 
 if (voiceJoinBtn) {
     voiceJoinBtn.addEventListener('click', async () => {
@@ -138,7 +141,6 @@ function leaveVoiceChannel() {
     }
     stopScreenSharing();
 
-    // Закрываем все WebRTC соединения
     Object.keys(peerConnections).forEach(id => {
         peerConnections[id].close();
         delete peerConnections[id];
@@ -153,7 +155,6 @@ function leaveVoiceChannel() {
     socket.emit('leave-voice');
 }
 
-// Когда кто-то новый зашел в голос — инициируем соединение
 socket.on('user-joined-voice', async (id) => {
     if (!isVoiceConnected) return;
     const pc = createPeerConnection(id);
@@ -174,7 +175,6 @@ socket.on('user-left-voice', (id) => {
     removeMediaElement(id);
 });
 
-// Обработка WebRTC сигналов
 socket.on('signal', async ({ from, signal }) => {
     let pc = peerConnections[from];
     if (!pc) {
@@ -184,7 +184,6 @@ socket.on('signal', async ({ from, signal }) => {
     try {
         if (signal.type === 'offer') {
             await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-            // Добавляем свои треки (звук/экран) перед ответом
             if (localStream) {
                 localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
             }
@@ -208,7 +207,6 @@ function createPeerConnection(id) {
     const pc = new RTCPeerConnection(rtcConfig);
     peerConnections[id] = pc;
 
-    // Передаем свои аудио и видео треки собеседнику
     if (localStream) {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
@@ -216,12 +214,10 @@ function createPeerConnection(id) {
         screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
     }
 
-    // Получаем аудио/видео от собеседника
     pc.ontrack = (event) => {
-        let stream = event.streams[0];
-        // Определяем, видео это (экран) или аудио
+        const stream = event.streams[0];
         if (event.track.kind === 'video') {
-            appendVideoElement(id, stream);
+            appendVideoElement(id, stream, 'Экран участника');
         } else if (event.track.kind === 'audio') {
             let audioEl = document.getElementById('audio-' + id);
             if (!audioEl) {
@@ -243,7 +239,6 @@ function createPeerConnection(id) {
     return pc;
 }
 
-// Заглушить микрофон
 if (muteBtn) {
     muteBtn.addEventListener('click', () => {
         if (!localStream) return;
@@ -257,7 +252,6 @@ if (muteBtn) {
     });
 }
 
-// Демонстрация экрана
 if (screenShareBtn) {
     screenShareBtn.addEventListener('click', async () => {
         try {
@@ -267,15 +261,20 @@ if (screenShareBtn) {
                 screenShareBtn.textContent = 'Остановить показ';
                 screenShareBtn.style.background = '#ed4245';
 
-                // Добавляем экран в ПК соединения для всех активных пиров
+                const videoTrack = screenStream.getVideoTracks()[0];
                 Object.values(peerConnections).forEach(pc => {
-                    screenStream.getTracks().forEach(track => pc.addTrack(track, screenStream));
+                    const senders = pc.getSenders();
+                    let videoSender = senders.find(s => s.track && s.track.kind === 'video');
+                    if (videoSender) {
+                        videoSender.replaceTrack(videoTrack);
+                    } else {
+                        pc.addTrack(videoTrack, screenStream);
+                    }
                 });
 
-                // Показываем свой экран себе локально
                 appendVideoElement('my-screen', screenStream, `${myUserName} (Ваш экран)`);
 
-                screenStream.getVideoTracks()[0].onended = () => {
+                videoTrack.onended = () => {
                     stopScreenSharing();
                 };
             } else {
@@ -301,7 +300,7 @@ function stopScreenSharing() {
     if (myCard) myCard.remove();
 }
 
-function appendVideoElement(id, stream, label = 'Экран участника') {
+function appendVideoElement(id, stream, label) {
     if (!screensGrid) return;
     let card = document.getElementById('card-' + id);
     if (!card) {
