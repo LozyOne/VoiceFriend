@@ -8,6 +8,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+// Раздаем статику из папки public
 app.use(express.static(path.join(__dirname, 'public')));
 
 const DATA_FILE = path.join(__dirname, 'data.json');
