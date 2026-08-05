@@ -1,83 +1,75 @@
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws');
+const { Server } = require('socket.io');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const users = new Map(); // Хранит ws -> имя
+// Список активных пользователей: id -> { name, inVoice }
+const users = new Map();
 
-wss.on('connection', (ws) => {
-    let userName = '';
+io.on('connection', (socket) => {
+    console.log('Пользователь подключился:', socket.id);
 
-    ws.on('message', (message) => {
-        try {
-            // Парсим входящее сообщение от клиента
-            const data = JSON.parse(message);
+    // Вход пользователя под именем
+    socket.on('join', (data) => {
+        const name = typeof data === 'string' ? data : (data.name || 'Аноним');
+        users.set(socket.id, { name, inVoice: false });
+        broadcastUsers();
+    });
 
-            switch (data.type) {
-                case 'join':
-                    userName = data.name;
-                    users.set(ws, userName);
-                    broadcastUserList();
-                    break;
-
-                case 'chat-message':
-                    // Рассылаем текстовое сообщение всем участникам
-                    wss.clients.forEach((client) => {
-                        if (client.readyState === WebSocket.OPEN) {
-                            client.send(JSON.stringify({
-                                type: 'chat-message',
-                                name: data.name,
-                                text: data.text
-                            }));
-                        }
-                    });
-                    break;
-
-                case 'offer':
-                case 'answer':
-                case 'candidate':
-                    // Перенаправление WebRTC-сигналов для голоса/видео
-                    wss.clients.forEach((client) => {
-                        if (client !== ws && client.readyState === WebSocket.OPEN) {
-                            client.send(JSON.stringify(data));
-                        }
-                    });
-                    break;
-
-                default:
-                    break;
-            }
-        } catch (e) {
-            console.error('Ошибка при обработке сообщения:', e);
+    // Вход в голосовой канал
+    socket.on('join-voice', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            user.inVoice = true;
+            broadcastUsers();
+            // Оповещаем остальных в комнате о новом участнике голоса
+            socket.broadcast.emit('user-joined-voice', socket.id);
         }
     });
 
-    ws.on('close', () => {
-        if (userName) {
-            users.delete(ws);
-            broadcastUserList();
+    // Выход из голосового канала
+    socket.on('leave-voice', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            user.inVoice = false;
+            broadcastUsers();
+            socket.broadcast.emit('user-left-voice', socket.id);
         }
+    });
+
+    // Текстовый чат
+    socket.on('chat-message', (data) => {
+        io.emit('chat-message', {
+            name: data.name,
+            text: data.text
+        });
+    });
+
+    // WebRTC Сигнализация (для передачи голоса и экрана между клиентами)
+    socket.on('signal', (data) => {
+        io.to(data.to).emit('signal', {
+            from: socket.id,
+            signal: data.signal
+        });
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Пользователь отключился:', socket.id);
+        users.delete(socket.id);
+        broadcastUsers();
+        io.emit('user-left-voice', socket.id);
     });
 });
 
-function broadcastUserList() {
+function broadcastUsers() {
     const userList = Array.from(users.values());
-    const payload = JSON.stringify({
-        type: 'users',
-        users: userList
-    });
-
-    wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
-        }
-    });
+    io.emit('users', userList);
 }
 
 const PORT = process.env.PORT || 3000;
